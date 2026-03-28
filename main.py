@@ -22,6 +22,7 @@ import io
 import csv
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
@@ -34,8 +35,8 @@ logging.basicConfig(
 )
 
 import uvicorn
-from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import Response
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, Response
 
 import mongo_store
 import store
@@ -58,6 +59,32 @@ async def lifespan(_app):
 app = FastAPI(title="Trade Journal AI", version="0.2.0", lifespan=lifespan)
 
 DATA_DIR = Path(__file__).parent / "data"
+
+
+@app.middleware("http")
+async def capture_request_metrics(request: Request, call_next):
+    started_at = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        mongo_store.log_api_request(
+            method=request.method,
+            path=request.url.path,
+            query=str(request.query_params),
+            status_code=500,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            error=str(exc),
+        )
+        raise
+
+    mongo_store.log_api_request(
+        method=request.method,
+        path=request.url.path,
+        query=str(request.query_params),
+        status_code=response.status_code,
+        duration_ms=(time.perf_counter() - started_at) * 1000,
+    )
+    return response
 
 
 def _normalize_instrument(instrument: str) -> str:
@@ -177,13 +204,30 @@ def _transcribe_voice_note(audio_file: UploadFile) -> tuple[str, str]:
 
     model = os.getenv("OPENAI_TRANSCRIBE_MODEL", "whisper-1")
     client = OpenAI()
+    started_at = time.perf_counter()
     audio_file.file.seek(0)
     content = audio_file.file.read()
     named_buffer = io.BytesIO(content)
     named_buffer.name = audio_file.filename or "voice_note.wav"
-    transcript = client.audio.transcriptions.create(
+    try:
+        transcript = client.audio.transcriptions.create(
+            model=model,
+            file=named_buffer,
+        )
+    except Exception as exc:
+        mongo_store.log_llm_call(
+            operation="voice_transcription",
+            model=model,
+            duration_ms=(time.perf_counter() - started_at) * 1000,
+            success=False,
+            error=str(exc),
+        )
+        raise
+    mongo_store.log_llm_call(
+        operation="voice_transcription",
         model=model,
-        file=named_buffer,
+        duration_ms=(time.perf_counter() - started_at) * 1000,
+        success=True,
     )
     text = getattr(transcript, "text", None) or ""
     text = text.strip()
@@ -1011,6 +1055,96 @@ def health():
         "mongo_connected": mongo_store.is_available(),
         "symbols_with_ohlcv": len(store.md_data),
     }
+
+
+@app.get("/monitoring/summary")
+def monitoring_summary(window_minutes: int = Query(60, ge=1, le=1440)):
+    return mongo_store.get_monitoring_summary(window_minutes=window_minutes)
+
+
+@app.get("/monitoring/alerts")
+def monitoring_alerts(window_minutes: int = Query(60, ge=1, le=1440)):
+    summary = mongo_store.get_monitoring_summary(window_minutes=window_minutes)
+    return {
+        "window_minutes": window_minutes,
+        "alerts": summary.get("alerts", []),
+    }
+
+
+@app.get("/monitoring", response_class=HTMLResponse)
+def monitoring_dashboard(window_minutes: int = Query(60, ge=1, le=1440)):
+    summary = mongo_store.get_monitoring_summary(window_minutes=window_minutes)
+    alerts_html = "".join(
+        f"<li><strong>{alert['severity'].upper()}</strong>: {alert['message']}</li>"
+        for alert in summary.get("alerts", [])
+    ) or "<li>No active alerts.</li>"
+
+    routes_html = "".join(
+        (
+            "<tr>"
+            f"<td>{route['path']}</td>"
+            f"<td>{route['requests']}</td>"
+            f"<td>{route['failure_count']}</td>"
+            f"<td>{route['avg_latency_ms']}</td>"
+            f"<td>{route['max_latency_ms']}</td>"
+            f"<td>{route['last_status_code']}</td>"
+            "</tr>"
+        )
+        for route in summary.get("api", {}).get("routes", [])
+    ) or "<tr><td colspan='6'>No API traffic in this window.</td></tr>"
+
+    llm_html = "".join(
+        (
+            "<tr>"
+            f"<td>{op['operation']}</td>"
+            f"<td>{op['calls']}</td>"
+            f"<td>{op['failure_count']}</td>"
+            f"<td>{op['avg_latency_ms']}</td>"
+            f"<td>{op['model']}</td>"
+            "</tr>"
+        )
+        for op in summary.get("llm", {}).get("operations", [])
+    ) or "<tr><td colspan='5'>No LLM calls in this window.</td></tr>"
+
+    return f"""
+    <html>
+      <head>
+        <title>Trade Journal Monitoring</title>
+        <style>
+          body {{ font-family: Arial, sans-serif; margin: 32px; background: #f5f7fb; color: #162033; }}
+          .cards {{ display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }}
+          .card {{ background: white; border-radius: 12px; padding: 16px 20px; min-width: 220px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }}
+          table {{ width: 100%; border-collapse: collapse; background: white; margin-bottom: 24px; }}
+          th, td {{ text-align: left; padding: 10px 12px; border-bottom: 1px solid #e6ebf2; }}
+          h1, h2 {{ margin-bottom: 12px; }}
+          ul {{ background: white; padding: 16px 24px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }}
+        </style>
+      </head>
+      <body>
+        <h1>Trade Journal Monitoring</h1>
+        <p>Window: last {window_minutes} minute(s)</p>
+        <div class="cards">
+          <div class="card"><strong>Mongo</strong><br>{summary.get('mongo_connected')}</div>
+          <div class="card"><strong>API Requests</strong><br>{summary.get('api', {}).get('total_requests')}</div>
+          <div class="card"><strong>API Avg Latency</strong><br>{summary.get('api', {}).get('avg_latency_ms')} ms</div>
+          <div class="card"><strong>LLM Calls</strong><br>{summary.get('llm', {}).get('total_calls')}</div>
+          <div class="card"><strong>LLM Avg Latency</strong><br>{summary.get('llm', {}).get('avg_latency_ms')} ms</div>
+        </div>
+        <h2>Alerts</h2>
+        <ul>{alerts_html}</ul>
+        <h2>API Routes</h2>
+        <table>
+          <tr><th>Path</th><th>Requests</th><th>Failures</th><th>Avg ms</th><th>Max ms</th><th>Last Status</th></tr>
+          {routes_html}
+        </table>
+        <h2>LLM Workflows</h2>
+        <table>
+          <tr><th>Operation</th><th>Calls</th><th>Failures</th><th>Avg ms</th><th>Model</th></tr>
+          {llm_html}
+        </table>
+      </body>
+    </html>
+    """
 
 
 if __name__ == "__main__":

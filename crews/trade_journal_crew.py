@@ -14,10 +14,13 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 from crewai import Agent, Crew, Process, Task
 from crewai import LLM
 from pydantic import BaseModel
+
+import mongo_store
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +56,16 @@ class TradeTagResult(BaseModel):
 
 def _llm() -> LLM:
     return LLM(model="gpt-4o-mini", temperature=0.3)
+
+
+def _record_llm_metric(*, operation: str, started_at: float, success: bool, error: str | None = None) -> None:
+    mongo_store.log_llm_call(
+        operation=operation,
+        model="gpt-4o-mini",
+        duration_ms=(time.perf_counter() - started_at) * 1000,
+        success=success,
+        error=error,
+    )
 
 
 def _no_key_trade_result() -> dict:
@@ -135,6 +148,7 @@ class TradeAnalysisCrew:
         if not os.getenv("OPENAI_API_KEY"):
             return _no_key_trade_result()
 
+        started_at = time.perf_counter()
         llm   = _llm()
         trade = self.trade
 
@@ -244,7 +258,12 @@ class TradeAnalysisCrew:
             verbose=False,
         )
 
-        result = crew.kickoff()
+        try:
+            result = crew.kickoff()
+        except Exception as exc:
+            _record_llm_metric(operation="trade_analysis", started_at=started_at, success=False, error=str(exc))
+            raise
+        _record_llm_metric(operation="trade_analysis", started_at=started_at, success=True)
 
         # structured pydantic output
         if hasattr(result, "pydantic") and result.pydantic:
@@ -288,6 +307,7 @@ class DailyJournalCrew:
 
         from tools.intraday_tool import format_trades_for_llm
 
+        started_at = time.perf_counter()
         llm = _llm()
 
         journal_writer = Agent(
@@ -329,7 +349,12 @@ class DailyJournalCrew:
             verbose=False,
         )
 
-        result = crew.kickoff()
+        try:
+            result = crew.kickoff()
+        except Exception as exc:
+            _record_llm_metric(operation="daily_journal", started_at=started_at, success=False, error=str(exc))
+            raise
+        _record_llm_metric(operation="daily_journal", started_at=started_at, success=True)
         raw = result.raw if hasattr(result, "raw") else str(result)
         try:
             start = raw.find("[")
@@ -366,6 +391,7 @@ class InstrumentAnalysisCrew:
 
         from tools.intraday_tool import format_trades_for_llm
 
+        started_at = time.perf_counter()
         llm = _llm()
         trades_text = format_trades_for_llm(self.trades)
         ohlcv_block = (
@@ -426,7 +452,12 @@ class InstrumentAnalysisCrew:
             verbose=False,
         )
 
-        result = crew.kickoff()
+        try:
+            result = crew.kickoff()
+        except Exception as exc:
+            _record_llm_metric(operation="instrument_analysis", started_at=started_at, success=False, error=str(exc))
+            raise
+        _record_llm_metric(operation="instrument_analysis", started_at=started_at, success=True)
 
         if hasattr(result, "pydantic") and result.pydantic:
             data: TradeAnalysisResult = result.pydantic
@@ -465,6 +496,7 @@ class TradeTaggingCrew:
         if not os.getenv("OPENAI_API_KEY"):
             return {"strategy": None, "emotion": None}
 
+        started_at = time.perf_counter()
         llm = _llm()
         trade = self.trade
 
@@ -509,7 +541,12 @@ class TradeTaggingCrew:
             verbose=False,
         )
 
-        result = crew.kickoff()
+        try:
+            result = crew.kickoff()
+        except Exception as exc:
+            _record_llm_metric(operation="trade_tagging", started_at=started_at, success=False, error=str(exc))
+            raise
+        _record_llm_metric(operation="trade_tagging", started_at=started_at, success=True)
 
         if hasattr(result, "pydantic") and result.pydantic:
             data: TradeTagResult = result.pydantic
@@ -540,6 +577,7 @@ class PatternInsightCrew:
         if not os.getenv("OPENAI_API_KEY"):
             return None
 
+        started_at = time.perf_counter()
         llm = _llm()
 
         pattern_analyst = Agent(
@@ -582,6 +620,11 @@ class PatternInsightCrew:
             verbose=False,
         )
 
-        result = crew.kickoff()
+        try:
+            result = crew.kickoff()
+        except Exception as exc:
+            _record_llm_metric(operation="pattern_insight", started_at=started_at, success=False, error=str(exc))
+            raise
+        _record_llm_metric(operation="pattern_insight", started_at=started_at, success=True)
         raw = result.raw if hasattr(result, "raw") else str(result)
         return raw.strip() or None

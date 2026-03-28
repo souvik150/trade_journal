@@ -427,6 +427,34 @@ curl -X POST http://localhost:8000/notes/voice \
 
 ---
 
+## Monitoring
+
+### `GET /monitoring/summary`
+
+Returns API request counts, average latency, failure counts, LLM workflow counts, and active alerts for a recent time window.
+
+```bash
+curl "http://localhost:8000/monitoring/summary?window_minutes=60"
+```
+
+### `GET /monitoring/alerts`
+
+Returns only the active alerts for the recent window.
+
+```bash
+curl "http://localhost:8000/monitoring/alerts?window_minutes=60"
+```
+
+### `GET /monitoring`
+
+HTML dashboard for API health, Mongo connectivity, request latency, LLM usage, and active alerts.
+
+```bash
+open "http://localhost:8000/monitoring"
+```
+
+---
+
 ## Typical flow
 
 ```bash
