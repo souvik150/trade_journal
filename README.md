@@ -126,9 +126,9 @@ This split is intentional: the in-app dashboard is useful for latency and LLM te
 
 ## Documentation
 
-- [Docs Index](/home/souvik/ZS_Codeathon/trade_journal/docs/README.md)
-- [API Reference](/home/souvik/ZS_Codeathon/trade_journal/docs/API_REFERENCE.md)
-- [Monitoring Service](/home/souvik/ZS_Codeathon/trade_journal/docs/MONITORING_SERVICE.md)
+- [Docs Index](https://github.com/souvik150/trade_journal/blob/master/docs/README.md)
+- [API Reference](https://github.com/souvik150/trade_journal/blob/master/docs/API_REFERENCE.md)
+- [Monitoring Service](https://github.com/souvik150/trade_journal/blob/master/docs/MONITORING_SERVICE.md)
 
 ## Hackathon Positioning
 
