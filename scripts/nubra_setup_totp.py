@@ -3,7 +3,7 @@ One-time TOTP setup for Nubra.
 
 Run this once after you've done an OTP login (auth_data.db must exist):
 
-    python scripts/nubra_setup_totp.py
+    python -m scripts.nubra_setup_totp
 
 It will:
 1. Generate a TOTP secret from Nubra
@@ -12,21 +12,19 @@ It will:
 4. Write TOTP_SECRET to your .env automatically
 
 After setup, use TOTP login for fully non-interactive sessions:
-    python scripts/nubra_login.py --totp
+    python -m scripts.nubra_login --totp
 """
 
 import json
 import os
 import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 import pyotp
 import qrcode
 from dotenv import load_dotenv, set_key
 
 load_dotenv()
-
-from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
 
 print("Connecting to Nubra (reusing existing session)...")
 nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
@@ -59,7 +57,7 @@ print(f"OTP URI    : {uri}\n")
 # Write to .env automatically
 env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 set_key(env_path, "TOTP_SECRET", secret)
-print(f"TOTP_SECRET written to .env\n")
+print("TOTP_SECRET written to .env\n")
 
 enable = input("Enable TOTP now? Enter TOTP code from your app (or blank to skip): ").strip()
 if enable:

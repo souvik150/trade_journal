@@ -1,7 +1,7 @@
 PYTHON ?= python3
 PORT   ?= 8000
 
-.PHONY: run install fix-data login login-totp setup-totp run-monitor
+.PHONY: run install fix-data login login-totp setup-totp run-monitor lint
 
 run:
 	$(PYTHON) -m app.main
@@ -16,15 +16,18 @@ fix-data:
 # Run once to authenticate and cache the session (enters OTP interactively).
 # After this the server reuses the session silently via MPIN from .env.
 login:
-	$(PYTHON) scripts/nubra_login.py
+	$(PYTHON) -m scripts.nubra_login
 
 # Run once after `make login` to switch to TOTP (fully non-interactive).
 setup-totp:
-	$(PYTHON) scripts/nubra_setup_totp.py
+	$(PYTHON) -m scripts.nubra_setup_totp
 
 # Use after TOTP is set up — generates TOTP from TOTP_SECRET in .env automatically.
 login-totp:
-	$(PYTHON) scripts/nubra_login.py --totp
+	$(PYTHON) -m scripts.nubra_login --totp
 
 run-monitor:
-	$(PYTHON) scripts/backend_monitor.py
+	$(PYTHON) -m scripts.backend_monitor
+
+lint:
+	$(PYTHON) -m pylint app scripts fetch_historical.py

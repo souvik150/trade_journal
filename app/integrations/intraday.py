@@ -46,11 +46,12 @@ def fetch_intraday_csv(
             "realTime":  False,
         })
 
-        if isinstance(response, dict) or not response.result:
+        response_result: list = getattr(response, "result", None) or []
+        if isinstance(response, dict) or not response_result:
             return ""
 
         lines = ["time,open,high,low,close,volume"]
-        for chart_data in response.result:
+        for chart_data in response_result:
             for stock_dict in chart_data.values:
                 for _sym, sc in stock_dict.items():
                     if not sc.open:

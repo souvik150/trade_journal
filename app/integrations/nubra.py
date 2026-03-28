@@ -67,7 +67,7 @@ def _batched(iterable, n: int):
 def fetch_historical_data(
     instruments: list[dict[str, str]],
     date: str,
-    fields: list[str] = DEFAULT_FIELDS,
+    fields: list[str] | None = None,
     interval: str = "1d",
     start_date: str | None = None,
     end_date: str | None = None,
@@ -86,6 +86,8 @@ def fetch_historical_data(
         Flat list of raw ChartData result dicts from the SDK, one per batch.
     """
     client = _init_client()
+    if fields is None:
+        fields = DEFAULT_FIELDS.copy()
     if start_date and end_date:
         start_utc, end_utc = _explicit_range_utc(start_date, end_date)
     else:

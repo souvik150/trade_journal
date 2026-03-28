@@ -36,14 +36,14 @@ async def lifespan(_app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Trade Journal AI", version="0.2.0", lifespan=lifespan)
-    app.middleware("http")(capture_request_metrics)
-    app.include_router(journal_router)
-    app.include_router(analytics_router)
-    app.include_router(trade_router)
-    app.include_router(notes_router)
-    app.include_router(monitoring_router)
-    return app
+    application = FastAPI(title="Trade Journal AI", version="0.2.0", lifespan=lifespan)
+    application.middleware("http")(capture_request_metrics)
+    application.include_router(journal_router)
+    application.include_router(analytics_router)
+    application.include_router(trade_router)
+    application.include_router(notes_router)
+    application.include_router(monitoring_router)
+    return application
 
 
 app = create_app()

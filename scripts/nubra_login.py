@@ -3,8 +3,8 @@ One-time interactive Nubra login.
 
 Run this once from a terminal to authenticate and cache the session:
 
-    python scripts/nubra_login.py             # OTP login (default)
-    python scripts/nubra_login.py --totp      # TOTP login (after setup)
+    python -m scripts.nubra_login             # OTP login (default)
+    python -m scripts.nubra_login --totp      # TOTP login (after setup)
 
 Reads PHONE_NO and MPIN from .env so you don't retype them.
 Session is saved to auth_data.db — the server reuses it without prompts.
@@ -12,12 +12,11 @@ Session is saved to auth_data.db — the server reuses it without prompts.
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
-load_dotenv()
-
 from nubra_python_sdk.start_sdk import InitNubraSdk, NubraEnv
+
+load_dotenv()
 
 totp_mode = "--totp" in sys.argv
 
@@ -30,15 +29,15 @@ print()
 if totp_mode and os.getenv("TOTP_SECRET"):
     try:
         import pyotp
-        totp_code = pyotp.TOTP(os.getenv("TOTP_SECRET")).now()
-        print(f"Auto-generated TOTP: {totp_code}")
+        GENERATED_TOTP = pyotp.TOTP(os.getenv("TOTP_SECRET")).now()
+        print(f"Auto-generated TOTP: {GENERATED_TOTP}")
         # The SDK still calls input() for TOTP — patch it
         import builtins
         _real_input = builtins.input
         def _patched_input(prompt=""):
             if "TOTP" in prompt:
-                print(f"{prompt}{totp_code}")
-                return totp_code
+                print(f"{prompt}{GENERATED_TOTP}")
+                return GENERATED_TOTP
             return _real_input(prompt)
         builtins.input = _patched_input
     except ImportError:

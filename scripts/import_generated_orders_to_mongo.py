@@ -1,17 +1,12 @@
-from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
-import sys
 
 from dotenv import load_dotenv
+from app.db import mongo_store
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT_DIR = ROOT_DIR / "data" / "generated_orders"
-sys.path.insert(0, str(ROOT_DIR))
-
-from app.db import mongo_store
 
 
 def parse_args() -> argparse.Namespace:

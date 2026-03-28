@@ -277,7 +277,6 @@ def monthly_summary(day_rows: list[dict]) -> dict:
         }
 
     all_pnls    = [d["net_pnl"]   for d in trading_days]
-    all_wr      = [d["win_rate"]  for d in trading_days]
     total_wins  = sum(d["wins"]   for d in trading_days)
     total_trades = sum(d["trades"] for d in trading_days)
 

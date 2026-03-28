@@ -1,0 +1,50 @@
+[tool.pylint.main]
+ignore = ["__pycache__"]
+jobs = 0
+py-version = "3.12"
+persistent = false
+
+[tool.pylint.messages_control]
+disable = [
+  "missing-module-docstring",
+  "missing-class-docstring",
+  "missing-function-docstring",
+  "line-too-long",
+  "global-statement",
+  "too-few-public-methods",
+  "too-many-arguments",
+  "too-many-locals",
+  "too-many-statements",
+  "too-many-branches",
+  "import-outside-toplevel",
+  "broad-exception-caught",
+  "too-many-nested-blocks",
+  "protected-access",
+  "duplicate-code",
+]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 30
+max-branches = 20
+max-statements = 80
+max-positional-arguments = 8
+max-nested-blocks = 6
+
+[tool.pylint.basic]
+good-names = [
+  "i",
+  "j",
+  "k",
+  "_",
+  "df",
+  "dt",
+  "md",
+  "sc",
+]
+
+[tool.pylint.similarities]
+min-similarity-lines = 8

@@ -117,7 +117,7 @@ def _price_near_open(candle: Candle, rng: random.Random, low_bias: float, high_b
 
 def _iday_prices(candle: Candle, direction: str, rng: random.Random) -> tuple[int, int]:
     bullish = candle.close >= candle.open
-    day_range = max(candle.high - candle.low, max(int(candle.open * 0.004), 1))
+    day_range = max(candle.high - candle.low, int(candle.open * 0.004), 1)
 
     if direction == "LONG":
         if bullish:
@@ -244,10 +244,11 @@ def fetch_daily_ohlc(
             if isinstance(response, dict):
                 print(f"[WARN] Nubra returned error payload: {response}")
                 continue
-            if not response.result:
+            response_result: list = getattr(response, "result", None) or []
+            if not response_result:
                 continue
 
-            for chart_data in response.result:
+            for chart_data in response_result:
                 for stock_dict in chart_data.values:
                     for symbol, series in stock_dict.items():
                         opens = series.open or []

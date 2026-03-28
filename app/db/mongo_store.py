@@ -9,16 +9,16 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_client = None
-_db = None
-_initialised = False
+_CLIENT = None
+_DB = None
+_INITIALISED = False
 
 
 def _init() -> None:
-    global _client, _db, _initialised
-    if _initialised:
+    global _CLIENT, _DB, _INITIALISED
+    if _INITIALISED:
         return
-    _initialised = True
+    _INITIALISED = True
 
     try:
         from pymongo import MongoClient
@@ -31,28 +31,28 @@ def _init() -> None:
     db_name = os.getenv("MONGO_DB_NAME", "trade_journal")
 
     try:
-        _client = MongoClient(uri, serverSelectionTimeoutMS=3000)
-        _client.admin.command("ping")
-        _db = _client[db_name]
-        _db.orders_by_date.create_index("date", unique=True)
-        _db.daily_reports.create_index("date", unique=True)
-        _db.daily_pnl_flow.create_index("date", unique=True)
-        _db.instrument_reports.create_index("cache_key", unique=True)
-        _db.notes.create_index([("date", 1), ("instrument", 1)], unique=True)
-        _db.api_request_metrics.create_index("created_at")
-        _db.api_request_metrics.create_index([("path", 1), ("created_at", -1)])
-        _db.llm_call_metrics.create_index("created_at")
-        _db.llm_call_metrics.create_index([("operation", 1), ("created_at", -1)])
-        _db.yearly_pnl.create_index("year", unique=True)
+        _CLIENT = MongoClient(uri, serverSelectionTimeoutMS=3000)
+        _CLIENT.admin.command("ping")
+        _DB = _CLIENT[db_name]
+        _DB.orders_by_date.create_index("date", unique=True)
+        _DB.daily_reports.create_index("date", unique=True)
+        _DB.daily_pnl_flow.create_index("date", unique=True)
+        _DB.instrument_reports.create_index("cache_key", unique=True)
+        _DB.notes.create_index([("date", 1), ("instrument", 1)], unique=True)
+        _DB.api_request_metrics.create_index("created_at")
+        _DB.api_request_metrics.create_index([("path", 1), ("created_at", -1)])
+        _DB.llm_call_metrics.create_index("created_at")
+        _DB.llm_call_metrics.create_index([("operation", 1), ("created_at", -1)])
+        _DB.yearly_pnl.create_index("year", unique=True)
     except PyMongoError as exc:
         logger.warning("Mongo unavailable; persistence disabled: %s", exc)
-        _client = None
-        _db = None
+        _CLIENT = None
+        _DB = None
 
 
 def is_available() -> bool:
     _init()
-    return _db is not None
+    return _DB is not None
 
 
 def log_api_request(
@@ -65,10 +65,10 @@ def log_api_request(
     error: str | None = None,
 ) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
     try:
-        _db.api_request_metrics.insert_one(
+        _DB.api_request_metrics.insert_one(
             {
                 "method": method,
                 "path": path,
@@ -92,10 +92,10 @@ def log_llm_call(
     error: str | None = None,
 ) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
     try:
-        _db.llm_call_metrics.insert_one(
+        _DB.llm_call_metrics.insert_one(
             {
                 "operation": operation,
                 "model": model,
@@ -114,7 +114,7 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
     since = datetime.now(timezone.utc).timestamp() - (window_minutes * 60)
     since_dt = datetime.fromtimestamp(since, tz=timezone.utc)
 
-    if _db is None:
+    if _DB is None:
         return {
             "window_minutes": window_minutes,
             "mongo_connected": False,
@@ -123,8 +123,8 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
             "alerts": [{"severity": "critical", "message": "MongoDB is unavailable; telemetry persistence is disabled."}],
         }
 
-    api_docs = list(_db.api_request_metrics.find({"created_at": {"$gte": since_dt}}, {"_id": 0}))
-    llm_docs = list(_db.llm_call_metrics.find({"created_at": {"$gte": since_dt}}, {"_id": 0}))
+    api_docs = list(_DB.api_request_metrics.find({"created_at": {"$gte": since_dt}}, {"_id": 0}))
+    llm_docs = list(_DB.llm_call_metrics.find({"created_at": {"$gte": since_dt}}, {"_id": 0}))
 
     route_buckets: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
@@ -232,9 +232,9 @@ def save_daily_report(
     ai_generated: bool,
 ) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
-    _db.daily_reports.replace_one(
+    _DB.daily_reports.replace_one(
         {"date": date},
         {
             "date": date,
@@ -248,9 +248,9 @@ def save_daily_report(
 
 def get_daily_report(date: str) -> dict[str, Any] | None:
     _init()
-    if _db is None:
+    if _DB is None:
         return None
-    doc = _db.daily_reports.find_one({"date": date}, {"_id": 0})
+    doc = _DB.daily_reports.find_one({"date": date}, {"_id": 0})
     return doc if isinstance(doc, dict) else None
 
 
@@ -261,9 +261,9 @@ def save_daily_pnl_flow(
     source_trade_count: int,
 ) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
-    _db.daily_pnl_flow.replace_one(
+    _DB.daily_pnl_flow.replace_one(
         {"date": date},
         {
             "date": date,
@@ -276,9 +276,9 @@ def save_daily_pnl_flow(
 
 def get_daily_pnl_flow(date: str) -> dict[str, Any] | None:
     _init()
-    if _db is None:
+    if _DB is None:
         return None
-    doc = _db.daily_pnl_flow.find_one({"date": date}, {"_id": 0})
+    doc = _DB.daily_pnl_flow.find_one({"date": date}, {"_id": 0})
     return doc if isinstance(doc, dict) else None
 
 
@@ -292,9 +292,9 @@ def save_instrument_report(
     ai_generated: bool,
 ) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
-    _db.instrument_reports.replace_one(
+    _DB.instrument_reports.replace_one(
         {"cache_key": cache_key},
         {
             "cache_key": cache_key,
@@ -310,17 +310,17 @@ def save_instrument_report(
 
 def get_instrument_report(cache_key: str) -> dict[str, Any] | None:
     _init()
-    if _db is None:
+    if _DB is None:
         return None
-    doc = _db.instrument_reports.find_one({"cache_key": cache_key}, {"_id": 0})
+    doc = _DB.instrument_reports.find_one({"cache_key": cache_key}, {"_id": 0})
     return doc if isinstance(doc, dict) else None
 
 
 def save_orders_for_date(*, date: str, orders: list[dict[str, Any]]) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
-    _db.orders_by_date.replace_one(
+    _DB.orders_by_date.replace_one(
         {"date": date},
         {
             "date": date,
@@ -333,9 +333,9 @@ def save_orders_for_date(*, date: str, orders: list[dict[str, Any]]) -> None:
 
 def get_all_orders_by_date() -> dict[str, list[dict[str, Any]]]:
     _init()
-    if _db is None:
+    if _DB is None:
         return {}
-    docs = _db.orders_by_date.find({}, {"_id": 0, "date": 1, "orders": 1})
+    docs = _DB.orders_by_date.find({}, {"_id": 0, "date": 1, "orders": 1})
     return {
         doc["date"]: doc.get("orders", [])
         for doc in docs
@@ -345,9 +345,9 @@ def get_all_orders_by_date() -> dict[str, list[dict[str, Any]]]:
 
 def clear_orders() -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
-    _db.orders_by_date.delete_many({})
+    _DB.orders_by_date.delete_many({})
 
 
 def save_yearly_pnl(
@@ -358,9 +358,9 @@ def save_yearly_pnl(
     source_order_count: int,
 ) -> None:
     _init()
-    if _db is None:
+    if _DB is None:
         return
-    _db.yearly_pnl.replace_one(
+    _DB.yearly_pnl.replace_one(
         {"year": year},
         {
             "year": year,
@@ -374,9 +374,9 @@ def save_yearly_pnl(
 
 def get_yearly_pnl(year: int) -> dict[str, Any] | None:
     _init()
-    if _db is None:
+    if _DB is None:
         return None
-    doc = _db.yearly_pnl.find_one({"year": year}, {"_id": 0})
+    doc = _DB.yearly_pnl.find_one({"year": year}, {"_id": 0})
     return doc if isinstance(doc, dict) else None
 
 
@@ -390,7 +390,7 @@ def create_note(
     transcription_model: str | None = None,
 ) -> dict[str, Any] | None:
     _init()
-    if _db is None:
+    if _DB is None:
         return None
 
     doc = {
@@ -403,7 +403,7 @@ def create_note(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     try:
-        existing = _db.notes.find_one(
+        existing = _DB.notes.find_one(
             {"date": date, "instrument": instrument},
             {"_id": 1, "created_at": 1},
         )
@@ -413,12 +413,12 @@ def create_note(
             else doc["updated_at"]
         )
         doc["created_at"] = created_at
-        _db.notes.replace_one(
+        _DB.notes.replace_one(
             {"date": date, "instrument": instrument},
             doc,
             upsert=True,
         )
-        saved = _db.notes.find_one(
+        saved = _DB.notes.find_one(
             {"date": date, "instrument": instrument},
             {"_id": 1, "date": 1, "instrument": 1, "text": 1, "source": 1, "audio_filename": 1, "transcription_model": 1, "created_at": 1, "updated_at": 1},
         )
@@ -443,11 +443,11 @@ def create_note(
 
 def get_note(*, date: str, instrument: str) -> dict[str, Any] | None:
     _init()
-    if _db is None:
+    if _DB is None:
         return None
 
     try:
-        doc = _db.notes.find_one(
+        doc = _DB.notes.find_one(
             {"date": date, "instrument": instrument},
             {"_id": 1, "date": 1, "instrument": 1, "text": 1, "source": 1, "audio_filename": 1, "transcription_model": 1, "created_at": 1, "updated_at": 1},
         )

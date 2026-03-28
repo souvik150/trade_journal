@@ -63,7 +63,7 @@ def fetch_and_print(instruments, start_date, end_date, interval):
     nubra = InitNubraSdk(NubraEnv.PROD, env_creds=True)
     client = MarketData(nubra)
 
-    print(f"\nFetching historical data")
+    print("\nFetching historical data")
     print(f"  Range    : {start_date}  →  {end_date}")
     print(f"  Interval : {interval}")
     print(f"  Symbols  : {[i['symbol'] for i in instruments]}")
@@ -94,14 +94,15 @@ def fetch_and_print(instruments, start_date, end_date, interval):
                 print(f"  error: {response}")
                 continue
 
-            print(f"  message     : {response.message}")
-            print(f"  market_time : {response.market_time}")
+            print(f"  message     : {getattr(response, 'message', None)}")
+            print(f"  market_time : {getattr(response, 'market_time', None)}")
 
-            if not response.result:
+            response_result: list = getattr(response, "result", None) or []
+            if not response_result:
                 print("  (no result data)")
                 continue
 
-            for chart_data in response.result:
+            for chart_data in response_result:
                 for stock_dict in chart_data.values:
                     for symbol, sc in stock_dict.items():
                         open_s  = tsp_to_series(sc.open)
