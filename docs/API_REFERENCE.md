@@ -4,29 +4,6 @@ Base URL: `http://localhost:8000`
 
 ---
 
-## Bootstrap
-
-### `POST /data/load`
-Manually rebuilds in-memory stock-order data and OHLCV.
-The server already does this automatically on startup, so normal API usage does not require this route. Daily and yearly caches are generated lazily when first requested and persisted in MongoDB when available.
-
-```bash
-curl -X POST http://localhost:8000/data/load
-```
-
-**Response**
-```json
-{
-  "status": "rebuilt",
-  "dates_loaded": 15,
-  "reports_cached": 0,
-  "symbols_with_ohlcv": ["AXISBANK", "HDFCBANK", "ICICIBANK", "INFY", "RELIANCE", "SBIN", "TCS", "WIPRO"],
-  "total_orders": 327
-}
-```
-
----
-
 ## 1. Monthly Journal Calendar
 
 ### `GET /journal/monthly`
@@ -459,7 +436,7 @@ open "http://localhost:8000/monitoring"
 
 ```bash
 # 1. start server
-python3 main.py
+python3 -m app.main
 
 # 2. browse the month
 curl "http://localhost:8000/journal/monthly?year=2025&month=3"
@@ -479,6 +456,4 @@ curl "http://localhost:8000/journal/yearly?year=2025"
 # 7. open one instrument detail screen from the daily journal
 curl "http://localhost:8000/trade?date=2025-03-26&instrument=AXISBANK"
 
-# optional: manually rebuild caches after order data changes
-curl -X POST http://localhost:8000/data/load
 ```

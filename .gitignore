@@ -1,5 +1,5 @@
 .env
 __pycache__
 .claude/
-api_response_screenshots/
+docs/assets/api_response_screenshots/
 auth_data.db

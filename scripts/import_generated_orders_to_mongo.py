@@ -11,7 +11,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_INPUT_DIR = ROOT_DIR / "data" / "generated_orders"
 sys.path.insert(0, str(ROOT_DIR))
 
-import mongo_store
+from app.db import mongo_store
 
 
 def parse_args() -> argparse.Namespace:
