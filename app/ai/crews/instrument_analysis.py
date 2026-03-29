@@ -74,7 +74,14 @@ class InstrumentAnalysisCrew:
         except Exception as exc:
             record_llm_metric(operation="instrument_analysis", started_at=started_at, success=False, error=str(exc))
             raise
-        record_llm_metric(operation="instrument_analysis", started_at=started_at, success=True)
+        usage = getattr(result, "token_usage", None)
+        record_llm_metric(
+            operation="instrument_analysis",
+            started_at=started_at,
+            success=True,
+            prompt_tokens=getattr(usage, "prompt_tokens", None),
+            completion_tokens=getattr(usage, "completion_tokens", None),
+        )
 
         if hasattr(result, "pydantic") and result.pydantic:
             data: TradeAnalysisResult = result.pydantic

@@ -22,11 +22,14 @@ async def capture_request_metrics(request: Request, call_next):
         )
         raise
 
+    content_length = response.headers.get("content-length")
+    response_size = int(content_length) if content_length and content_length.isdigit() else None
     mongo_store.log_api_request(
         method=request.method,
         path=request.url.path,
         query=str(request.query_params),
         status_code=response.status_code,
         duration_ms=(time.perf_counter() - started_at) * 1000,
+        response_size_bytes=response_size,
     )
     return response

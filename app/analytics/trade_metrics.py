@@ -141,7 +141,7 @@ def daily_stats(trades: list[dict]) -> dict:
 
     return {
         "net_pnl":         net_pnl,
-        "trades":          len(trades),
+        "trades":          len(trades) * 2,
         "win_rate":        win_rate,
         "wins":            len(wins),
         "losses":          len(losses),

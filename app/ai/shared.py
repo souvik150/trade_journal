@@ -37,13 +37,23 @@ def llm() -> LLM:
     return LLM(model="gpt-4o-mini", temperature=0.3)
 
 
-def record_llm_metric(*, operation: str, started_at: float, success: bool, error: str | None = None) -> None:
+def record_llm_metric(
+    *,
+    operation: str,
+    started_at: float,
+    success: bool,
+    error: str | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+) -> None:
     mongo_store.log_llm_call(
         operation=operation,
         model="gpt-4o-mini",
         duration_ms=(time.perf_counter() - started_at) * 1000,
         success=success,
         error=error,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
     )
 
 

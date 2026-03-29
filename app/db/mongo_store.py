@@ -63,6 +63,7 @@ def log_api_request(
     status_code: int,
     duration_ms: float,
     error: str | None = None,
+    response_size_bytes: int | None = None,
 ) -> None:
     _init()
     if _DB is None:
@@ -76,6 +77,7 @@ def log_api_request(
                 "status_code": status_code,
                 "duration_ms": round(duration_ms, 2),
                 "error": error,
+                "response_size_bytes": response_size_bytes,
                 "created_at": datetime.now(timezone.utc),
             }
         )
@@ -90,6 +92,8 @@ def log_llm_call(
     duration_ms: float,
     success: bool,
     error: str | None = None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
 ) -> None:
     _init()
     if _DB is None:
@@ -102,6 +106,8 @@ def log_llm_call(
                 "duration_ms": round(duration_ms, 2),
                 "success": success,
                 "error": error,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
                 "created_at": datetime.now(timezone.utc),
             }
         )
@@ -126,6 +132,15 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
     api_docs = list(_DB.api_request_metrics.find({"created_at": {"$gte": since_dt}}, {"_id": 0}))
     llm_docs = list(_DB.llm_call_metrics.find({"created_at": {"$gte": since_dt}}, {"_id": 0}))
 
+    # Map from route path → LLM operation names it may trigger
+    _ROUTE_TO_OPS: dict[str, set[str]] = {
+        "/trade": {"trade_analysis", "instrument_analysis", "trade_tagging"},
+        "/journal/daily": {"daily_journal"},
+        "/analytics/time-performance": {"pattern_insight"},
+    }
+    # Which ops actually fired in this window (resolved after llm_docs is read)
+    _active_ops: set[str] = {doc.get("operation", "") for doc in llm_docs}
+
     route_buckets: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
             "requests": 0,
@@ -133,6 +148,8 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
             "total_latency_ms": 0.0,
             "max_latency_ms": 0.0,
             "last_status_code": None,
+            "total_response_bytes": 0,
+            "response_size_count": 0,
         }
     )
     for doc in api_docs:
@@ -146,10 +163,18 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
         bucket["last_status_code"] = status_code
         if status_code >= 500:
             bucket["failure_count"] += 1
+        size = doc.get("response_size_bytes")
+        if size is not None:
+            bucket["total_response_bytes"] += size
+            bucket["response_size_count"] += 1
 
     routes = []
     for path, bucket in sorted(route_buckets.items()):
         avg_latency = round(bucket["total_latency_ms"] / bucket["requests"], 2) if bucket["requests"] else None
+        avg_size = (
+            round(bucket["total_response_bytes"] / bucket["response_size_count"], 0)
+            if bucket["response_size_count"] else None
+        )
         routes.append(
             {
                 "path": path,
@@ -158,8 +183,14 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
                 "avg_latency_ms": avg_latency,
                 "max_latency_ms": round(bucket["max_latency_ms"], 2),
                 "last_status_code": bucket["last_status_code"],
+                "avg_response_bytes": avg_size,
+                "llm_backed": bool(_ROUTE_TO_OPS.get(path, set()) & _active_ops),
             }
         )
+
+    # gpt-4o-mini pricing (USD per token)
+    _PROMPT_COST_PER_TOKEN     = 0.150 / 1_000_000
+    _COMPLETION_COST_PER_TOKEN = 0.600 / 1_000_000
 
     llm_buckets: dict[str, dict[str, Any]] = defaultdict(
         lambda: {
@@ -167,6 +198,8 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
             "failure_count": 0,
             "total_latency_ms": 0.0,
             "last_model": None,
+            "total_prompt_tokens": 0,
+            "total_completion_tokens": 0,
         }
     )
     for doc in llm_docs:
@@ -177,10 +210,15 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
         bucket["last_model"] = doc.get("model")
         if not doc.get("success", False):
             bucket["failure_count"] += 1
+        bucket["total_prompt_tokens"]     += doc.get("prompt_tokens") or 0
+        bucket["total_completion_tokens"] += doc.get("completion_tokens") or 0
 
     operations = []
     for operation, bucket in sorted(llm_buckets.items()):
         avg_latency = round(bucket["total_latency_ms"] / bucket["calls"], 2) if bucket["calls"] else None
+        pt = bucket["total_prompt_tokens"]
+        ct = bucket["total_completion_tokens"]
+        cost = round((pt * _PROMPT_COST_PER_TOKEN) + (ct * _COMPLETION_COST_PER_TOKEN), 6)
         operations.append(
             {
                 "operation": operation,
@@ -188,11 +226,28 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
                 "failure_count": bucket["failure_count"],
                 "avg_latency_ms": avg_latency,
                 "model": bucket["last_model"],
+                "prompt_tokens": pt,
+                "completion_tokens": ct,
+                "total_tokens": pt + ct,
+                "approx_cost_usd": cost,
             }
         )
 
     api_avg_latency = round(sum(float(doc.get("duration_ms", 0.0)) for doc in api_docs) / len(api_docs), 2) if api_docs else None
     llm_avg_latency = round(sum(float(doc.get("duration_ms", 0.0)) for doc in llm_docs) / len(llm_docs), 2) if llm_docs else None
+
+    # Build op-name → avg_latency_ms for bottleneck breakdown per route
+    op_latency: dict[str, float] = {op["operation"]: (op["avg_latency_ms"] or 0.0) for op in operations}
+    for route in routes:
+        if route["llm_backed"]:
+            matched_ops = _ROUTE_TO_OPS.get(route["path"], set()) & _active_ops
+            llm_ms = max((op_latency.get(op, 0.0) for op in matched_ops), default=None) if matched_ops else None
+            route["llm_avg_ms"] = round(llm_ms, 2) if llm_ms else None
+            other = (route["avg_latency_ms"] or 0) - (llm_ms or 0)
+            route["other_avg_ms"] = round(max(other, 0), 2)
+        else:
+            route["llm_avg_ms"] = None
+            route["other_avg_ms"] = route["avg_latency_ms"]
 
     alerts: list[dict[str, str]] = []
     for route in routes:
@@ -213,11 +268,17 @@ def get_monitoring_summary(*, window_minutes: int = 60) -> dict[str, Any]:
             "avg_latency_ms": api_avg_latency,
             "failure_count": sum(1 for doc in api_docs if int(doc.get("status_code", 0)) >= 500),
             "routes": routes,
+            "llm_routes": [r for r in routes if r["llm_backed"]],
+            "direct_routes": [r for r in routes if not r["llm_backed"]],
         },
         "llm": {
             "total_calls": len(llm_docs),
             "avg_latency_ms": llm_avg_latency,
             "failure_count": sum(1 for doc in llm_docs if not doc.get("success", False)),
+            "total_prompt_tokens": sum(op["prompt_tokens"] for op in operations),
+            "total_completion_tokens": sum(op["completion_tokens"] for op in operations),
+            "total_tokens": sum(op["total_tokens"] for op in operations),
+            "approx_cost_usd": round(sum(op["approx_cost_usd"] for op in operations), 6),
             "operations": operations,
         },
         "alerts": alerts,

@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trade Journal — Monitoring</title>
+  <style>
+    :root {
+      --bg:      #0d1117;
+      --surface: #161b22;
+      --surf2:   #1c2330;
+      --border:  #21262d;
+      --green:   #00d084;
+      --blue:    #00a8ff;
+      --red:     #ff4d4d;
+      --yellow:  #f0b429;
+      --text:    #e6edf3;
+      --muted:   #8b949e;
+      --font:    'Segoe UI', system-ui, sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body { background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; }
+    .dot {
+      width: 9px; height: 9px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 8px var(--green);
+    }
+    .meta { font-size: 12px; color: var(--muted); }
+
+    main { padding: 28px 32px; max-width: 1400px; }
+
+    /* ── Section heading ── */
+    h2 {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1.4px; color: var(--muted);
+      margin: 32px 0 12px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    h2::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+    /* ── Stat cards ── */
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 12px; margin-bottom: 4px;
+    }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      position: relative; overflow: hidden;
+    }
+    .card::before {
+      content: ''; position: absolute; top: 0; left: 0;
+      width: 3px; height: 100%; background: var(--green);
+      border-radius: 10px 0 0 10px;
+    }
+    .card.c-blue::before  { background: var(--blue); }
+    .card.c-red::before   { background: var(--red); }
+    .card.c-yellow::before{ background: var(--yellow); }
+    .card .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+    .card .val { font-size: 20px; font-weight: 700; line-height: 1; }
+    .val.green  { color: var(--green); }
+    .val.blue   { color: var(--blue); }
+    .val.red    { color: var(--red); }
+    .val.yellow { color: var(--yellow); }
+
+    /* ── Alerts ── */
+    .alerts { display: flex; flex-direction: column; gap: 8px; }
+    .alert {
+      display: flex; align-items: center; gap: 10px;
+      padding: 9px 14px; border-radius: 8px; font-size: 13px;
+      border: 1px solid transparent;
+    }
+    .alert.critical { background: rgba(255,77,77,.08); border-color: rgba(255,77,77,.25); color: #ff8080; }
+    .alert.warning  { background: rgba(240,180,41,.08); border-color: rgba(240,180,41,.25); color: var(--yellow); }
+    .badge {
+      font-size: 10px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .6px; padding: 2px 7px; border-radius: 4px;
+    }
+    .alert.critical .badge { background: rgba(255,77,77,.2); color: var(--red); }
+    .alert.warning  .badge { background: rgba(240,180,41,.2); color: var(--yellow); }
+    .no-alerts { color: var(--muted); font-style: italic; font-size: 13px; }
+
+    /* ── Table ── */
+    .table-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; overflow-x: auto;
+    }
+    table { width: 100%; border-collapse: collapse; table-layout: auto; }
+    thead { background: var(--surf2); }
+    th {
+      padding: 9px 14px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 1px;
+      color: var(--muted); text-align: left; white-space: nowrap;
+    }
+    td {
+      padding: 9px 14px; border-top: 1px solid var(--border);
+      font-size: 13px; text-align: left; vertical-align: middle;
+      white-space: nowrap; color: var(--text);
+    }
+    td.dim { color: var(--muted); }
+    tbody tr:hover { background: rgba(255,255,255,.025); }
+
+    /* pills */
+    .pill {
+      display: inline-flex; align-items: center; justify-content: center;
+      padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    }
+    .pill.ok     { background: rgba(0,208,132,.12); color: var(--green); }
+    .pill.fail   { background: rgba(255,77,77,.12);  color: var(--red); }
+    .pill.warn   { background: rgba(240,180,41,.12); color: var(--yellow); }
+    .pill.blue   { background: rgba(0,168,255,.12);  color: var(--blue); }
+
+    .lat-red    { color: var(--red); font-weight: 600; }
+    .lat-yellow { color: var(--yellow); font-weight: 600; }
+
+    /* ── Info button ── */
+    .info-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--surf2); border: 1px solid var(--border);
+      color: var(--muted); font-size: 10px; font-weight: 700;
+      cursor: pointer; margin-left: 6px;
+      vertical-align: middle; flex-shrink: 0;
+      transition: border-color .15s, color .15s;
+    }
+    .info-btn:hover, .info-btn.active { border-color: var(--blue); color: var(--blue); }
+
+    /* ── Global floating tooltip (appended to body by JS) ── */
+    #tt-popup {
+      display: none;
+      position: fixed; z-index: 9999;
+      background: #111827; border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 16px;
+      min-width: 240px; box-shadow: 0 12px 32px rgba(0,0,0,.7);
+      font-size: 12px; color: var(--text); line-height: 1.6;
+      pointer-events: none;
+    }
+    #tt-popup .t-row {
+      display: flex; justify-content: space-between; gap: 16px;
+      padding: 3px 0; border-bottom: 1px solid var(--border);
+    }
+    #tt-popup .t-row:last-child { border-bottom: none; }
+    #tt-popup .t-key { color: var(--muted); }
+    #tt-popup .t-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+    #tt-popup .t-val.yellow { color: var(--yellow); }
+    #tt-popup .t-val.blue   { color: var(--blue); }
+    #tt-popup .bar-wrap { margin-top: 10px; }
+    #tt-popup .bar-label { font-size: 10px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .6px; }
+    #tt-popup .bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: flex; }
+    #tt-popup .bar-seg   { height: 100%; }
+
+    /* inline mini-bar (always visible in table) */
+    .bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; display: flex; }
+    .bar-seg   { height: 100%; }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center; color: var(--muted); font-size: 11px;
+      padding: 28px 0 14px; border-top: 1px solid var(--border); margin-top: 36px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="dot"></span>
+    Trade Journal <span style="color:var(--muted);font-weight:400;margin-left:6px">/ Monitoring</span>
+  </div>
+  <div class="meta">Window: last {{ window_minutes }} min &nbsp;·&nbsp; {{ "MongoDB OK" if mongo_connected else "MongoDB DOWN" }}</div>
+</header>
+
+<main>
+
+  <!-- ── Overview ── -->
+  <h2>Overview</h2>
+  <div class="cards">
+    <div class="card c-blue">
+      <div class="lbl">API Requests</div>
+      <div class="val blue">{{ api.total_requests }}</div>
+    </div>
+    <div class="card {{ 'c-red' if api.failure_count > 0 else '' }}">
+      <div class="lbl">API Failures</div>
+      <div class="val {{ 'red' if api.failure_count > 0 else 'green' }}">{{ api.failure_count }}</div>
+    </div>
+    <div class="card">
+      <div class="lbl">API Avg Latency</div>
+      <div class="val">{{ api.avg_latency_ms or '—' }}<span style="font-size:11px;color:var(--muted);margin-left:4px">ms</span></div>
+    </div>
+    <div class="card c-blue">
+      <div class="lbl">LLM Calls</div>
+      <div class="val blue">{{ llm.total_calls }}</div>
+    </div>
+    <div class="card {{ 'c-red' if llm.failure_count > 0 else '' }}">
+      <div class="lbl">LLM Failures</div>
+      <div class="val {{ 'red' if llm.failure_count > 0 else 'green' }}">{{ llm.failure_count }}</div>
+    </div>
+    <div class="card">
+      <div class="lbl">LLM Avg Latency</div>
+      <div class="val">{{ llm.avg_latency_ms or '—' }}<span style="font-size:11px;color:var(--muted);margin-left:4px">ms</span></div>
+    </div>
+    <div class="card c-yellow">
+      <div class="lbl">Total Tokens</div>
+      <div class="val yellow">{{ "{:,}".format(llm.total_tokens) }}</div>
+    </div>
+    <div class="card c-yellow">
+      <div class="lbl">Approx Cost</div>
+      <div class="val yellow">${{ "%.5f"|format(llm.approx_cost_usd) }}</div>
+    </div>
+    <div class="card {{ '' if mongo_connected else 'c-red' }}">
+      <div class="lbl">MongoDB</div>
+      <div class="val {{ 'green' if mongo_connected else 'red' }}">{{ "OK" if mongo_connected else "Down" }}</div>
+    </div>
+  </div>
+
+  <!-- ── Alerts ── -->
+  <h2>Alerts</h2>
+  <div class="alerts">
+    {% if alerts %}
+      {% for a in alerts %}
+      <div class="alert {{ a.severity }}">
+        <span class="badge">{{ a.severity }}</span>{{ a.message }}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="no-alerts">No active alerts in this window.</p>
+    {% endif %}
+  </div>
+
+  <!-- ── LLM-Backed Routes ── -->
+  <h2>API Routes — LLM-Backed</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Requests</th>
+          <th>Failures</th>
+          <th>Avg Latency</th>
+          <th>Max Latency</th>
+          <th>Last Status</th>
+          <th>Avg Size</th>
+          <th>Breakdown</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if api.llm_routes %}
+          {% for r in api.llm_routes %}
+          {% set total = r.avg_latency_ms or 0 %}
+          {% set llm_ms = r.llm_avg_ms or 0 %}
+          {% set other_ms = r.other_avg_ms or 0 %}
+          {% set llm_pct = ((llm_ms / total) * 100)|round|int if total > 0 else 0 %}
+          {% set other_pct = 100 - llm_pct %}
+          {% set size_str = "{:,} B".format(r.avg_response_bytes|int) if r.avg_response_bytes else '—' %}
+          <tr>
+            <td>
+              <span class="pill blue">{{ r.path }}</span>
+              <span class="info-btn"
+                data-total="{{ total }}"
+                data-llm="{{ llm_ms }}"
+                data-other="{{ other_ms }}"
+                data-max="{{ r.max_latency_ms }}"
+                data-reqs="{{ r.requests }}"
+                data-size="{{ size_str }}"
+                data-llmpct="{{ llm_pct }}"
+                data-otherpct="{{ other_pct }}"
+                data-type="llm">i</span>
+            </td>
+            <td class="dim">{{ r.requests }}</td>
+            <td>
+              {% if r.failure_count > 0 %}<span class="pill fail">{{ r.failure_count }}</span>
+              {% else %}<span class="pill ok">0</span>{% endif %}
+            </td>
+            <td class="{{ 'lat-red' if total > 5000 else 'lat-yellow' if total > 2000 else 'dim' }}">{{ total }} ms</td>
+            <td class="dim">{{ r.max_latency_ms }} ms</td>
+            <td>
+              {% if r.last_status_code %}
+                <span class="pill {{ 'fail' if r.last_status_code >= 500 else 'warn' if r.last_status_code >= 400 else 'ok' }}">{{ r.last_status_code }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="dim">{{ size_str }}</td>
+            <td>
+              <div style="width:80px">
+                <div class="bar-track">
+                  <div class="bar-seg" style="width:{{ llm_pct }}%;background:var(--yellow)"></div>
+                  <div class="bar-seg" style="width:{{ other_pct }}%;background:var(--blue)"></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="8" style="color:var(--muted);text-align:center;padding:20px">No LLM-backed calls in this window.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── Direct Routes ── -->
+  <h2>API Routes — Direct</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Path</th>
+          <th>Requests</th>
+          <th>Failures</th>
+          <th>Avg Latency</th>
+          <th>Max Latency</th>
+          <th>Last Status</th>
+          <th>Avg Size</th>
+          <th>Breakdown</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if api.direct_routes %}
+          {% for r in api.direct_routes %}
+          {% set total = r.avg_latency_ms or 0 %}
+          {% set size_str = "{:,} B".format(r.avg_response_bytes|int) if r.avg_response_bytes else '—' %}
+          <tr>
+            <td>
+              <code style="font-size:12px;color:var(--muted)">{{ r.path }}</code>
+              <span class="info-btn"
+                data-total="{{ total }}"
+                data-llm="0"
+                data-other="{{ total }}"
+                data-max="{{ r.max_latency_ms }}"
+                data-reqs="{{ r.requests }}"
+                data-size="{{ size_str }}"
+                data-llmpct="0"
+                data-otherpct="100"
+                data-type="direct">i</span>
+            </td>
+            <td class="dim">{{ r.requests }}</td>
+            <td>
+              {% if r.failure_count > 0 %}<span class="pill fail">{{ r.failure_count }}</span>
+              {% else %}<span class="pill ok">0</span>{% endif %}
+            </td>
+            <td class="{{ 'lat-yellow' if total > 1500 else 'dim' }}">{{ total }} ms</td>
+            <td class="dim">{{ r.max_latency_ms }} ms</td>
+            <td>
+              {% if r.last_status_code %}
+                <span class="pill {{ 'fail' if r.last_status_code >= 500 else 'warn' if r.last_status_code >= 400 else 'ok' }}">{{ r.last_status_code }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td class="dim">{{ size_str }}</td>
+            <td>
+              <div style="width:80px">
+                <div class="bar-track">
+                  <div class="bar-seg" style="width:100%;background:var(--blue)"></div>
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="8" style="color:var(--muted);text-align:center;padding:20px">No direct calls in this window.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ── LLM Workflows ── -->
+  <h2>LLM Workflows</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Operation</th>
+          <th>Calls</th>
+          <th>Failures</th>
+          <th>Avg Latency</th>
+          <th>Model</th>
+          <th>Prompt Tokens</th>
+          <th>Completion Tokens</th>
+          <th>Total Tokens</th>
+          <th>Approx Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if llm.operations %}
+          {% for op in llm.operations %}
+          <tr>
+            <td><span class="pill blue">{{ op.operation }}</span></td>
+            <td class="dim">{{ op.calls }}</td>
+            <td>
+              {% if op.failure_count > 0 %}<span class="pill fail">{{ op.failure_count }}</span>
+              {% else %}<span class="pill ok">0</span>{% endif %}
+            </td>
+            <td class="dim">{{ op.avg_latency_ms or '—' }} ms</td>
+            <td class="dim" style="font-size:12px">{{ op.model or '—' }}</td>
+            <td class="dim">{{ "{:,}".format(op.prompt_tokens) }}</td>
+            <td class="dim">{{ "{:,}".format(op.completion_tokens) }}</td>
+            <td style="color:var(--yellow);font-weight:600">{{ "{:,}".format(op.total_tokens) }}</td>
+            <td style="color:var(--yellow)">${{ "%.6f"|format(op.approx_cost_usd) }}</td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr><td colspan="9" style="color:var(--muted);text-align:center;padding:20px">No LLM calls in this window.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<footer>Trade Journal AI &nbsp;·&nbsp; Monitoring &nbsp;·&nbsp; Window: {{ window_minutes }}m</footer>
+
+<!-- Global floating tooltip -->
+<div id="tt-popup"></div>
+
+<script>
+(function () {
+  const popup = document.getElementById('tt-popup');
+  let activeBtn = null;
+
+  function buildHtml(d) {
+    const isLlm = d.type === 'llm';
+    const llmPct = parseInt(d.llmpct, 10);
+    const otherPct = parseInt(d.otherpct, 10);
+
+    let rows = `
+      <div class="t-row"><span class="t-key">Total avg latency</span><span class="t-val">${d.total} ms</span></div>`;
+    if (isLlm) {
+      rows += `
+      <div class="t-row"><span class="t-key">LLM time</span><span class="t-val yellow">${d.llm} ms</span></div>
+      <div class="t-row"><span class="t-key">DB + app time</span><span class="t-val blue">${d.other} ms</span></div>`;
+    } else {
+      rows += `
+      <div class="t-row"><span class="t-key">DB + app time</span><span class="t-val blue">${d.other} ms</span></div>`;
+    }
+    rows += `
+      <div class="t-row"><span class="t-key">Max latency</span><span class="t-val">${d.max} ms</span></div>
+      <div class="t-row"><span class="t-key">Requests</span><span class="t-val">${d.reqs}</span></div>
+      <div class="t-row"><span class="t-key">Avg response size</span><span class="t-val">${d.size}</span></div>`;
+
+    const bar = isLlm ? `
+      <div class="bar-wrap">
+        <div class="bar-label">Latency split</div>
+        <div class="bar-track">
+          <div class="bar-seg" style="width:${llmPct}%;background:var(--yellow)"></div>
+          <div class="bar-seg" style="width:${otherPct}%;background:var(--blue)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:10px">
+          <span style="color:var(--yellow)">&#9632; LLM ${llmPct}%</span>
+          <span style="color:var(--blue)">&#9632; DB/App ${otherPct}%</span>
+        </div>
+      </div>` : `
+      <div class="bar-wrap">
+        <div class="bar-label">Latency split</div>
+        <div class="bar-track">
+          <div class="bar-seg" style="width:100%;background:var(--blue)"></div>
+        </div>
+        <div style="margin-top:5px;font-size:10px;color:var(--blue)">&#9632; DB/App 100%</div>
+      </div>`;
+
+    return rows + bar;
+  }
+
+  function show(btn) {
+    const d = btn.dataset;
+    popup.innerHTML = buildHtml(d);
+    popup.style.display = 'block';
+
+    const rect = btn.getBoundingClientRect();
+    const pw = 260;
+    let left = rect.left + window.scrollX;
+    let top  = rect.bottom + window.scrollY + 6;
+
+    // flip left if would overflow right edge
+    if (left + pw > window.innerWidth - 8) {
+      left = rect.right + window.scrollX - pw;
+    }
+    popup.style.left = left + 'px';
+    popup.style.top  = top  + 'px';
+
+    btn.classList.add('active');
+    activeBtn = btn;
+  }
+
+  function hide() {
+    popup.style.display = 'none';
+    if (activeBtn) { activeBtn.classList.remove('active'); activeBtn = null; }
+  }
+
+  document.querySelectorAll('.info-btn').forEach(btn => {
+    btn.addEventListener('mouseenter', () => show(btn));
+    btn.addEventListener('mouseleave', () => hide());
+    btn.addEventListener('focus',      () => show(btn));
+    btn.addEventListener('blur',       () => hide());
+  });
+})();
+</script>
+
+</body>
+</html>
