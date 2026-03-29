@@ -8,11 +8,21 @@ from app.ai.shared import TradeAnalysisResult, has_openai_key, llm, no_key_trade
 
 
 class InstrumentAnalysisCrew:
-    def __init__(self, instrument: str, date: str, trades: list[dict], intraday_csv: str):
+    def __init__(
+        self,
+        instrument: str,
+        date: str,
+        trades: list[dict],
+        intraday_csv: str,
+        best_entry: dict | None = None,
+        best_exit: dict | None = None,
+    ):
         self.instrument = instrument
         self.date = date
         self.trades = trades
         self.intraday_csv = intraday_csv
+        self.best_entry = best_entry
+        self.best_exit = best_exit
 
     def run(self) -> dict:
         if not has_openai_key():
@@ -28,6 +38,25 @@ class InstrumentAnalysisCrew:
             if self.intraday_csv else
             "\n\n(No intraday OHLCV available — use the trade sequence for context.)"
         )
+
+        # Ground truth computed from actual OHLCV — use these exact values
+        verified_block = ""
+        if self.best_entry or self.best_exit:
+            lines = ["\n\nVERIFIED BEST ENTRY/EXIT (computed from actual OHLCV — do NOT deviate from these):"]
+            if self.best_entry:
+                c = self.best_entry.get("candle", {})
+                lines.append(
+                    f"  BEST ENTRY: time={self.best_entry['time']}  price={self.best_entry['price']}"
+                    f"  (candle O={c.get('open')} H={c.get('high')} L={c.get('low')} C={c.get('close')})"
+                )
+            if self.best_exit:
+                c = self.best_exit.get("candle", {})
+                lines.append(
+                    f"  BEST EXIT:  time={self.best_exit['time']}  price={self.best_exit['price']}"
+                    f"  (candle O={c.get('open')} H={c.get('high')} L={c.get('low')} C={c.get('close')})"
+                )
+            lines.append("  Use these exact times and prices in the Entry Review and Exit Review timeline events.")
+            verified_block = "\n".join(lines)
         analyst = Agent(
             role="Instrument Trading Analyst",
             goal="Review all trades for one instrument on one day and produce a compact, actionable report",
@@ -43,7 +72,8 @@ class InstrumentAnalysisCrew:
             description=(
                 f"Analyze all trades for {self.instrument} on {self.date}.\n\n"
                 f"Trades:\n{trades_text}\n"
-                f"{ohlcv_block}\n\n"
+                f"{ohlcv_block}"
+                f"{verified_block}\n\n"
                 "Output a JSON object with exactly these keys:\n"
                 "  signal_timeline      : 6-10 key events for this instrument during the session\n"
                 "  strategy             : the dominant setup label, 2-5 words\n"

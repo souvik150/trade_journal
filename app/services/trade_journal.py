@@ -10,7 +10,7 @@ from app.ai.crews import DailyJournalCrew, InstrumentAnalysisCrew, PatternInsigh
 from app.core import store
 from app.db import mongo_store
 from app.analytics.trade_metrics import daily_stats, monthly_summary, pair_trades, pnl_flow, time_window_stats
-from app.integrations.intraday import fetch_intraday_csv
+from app.integrations.intraday import candles_to_csv, get_intraday_candles
 
 
 logger = logging.getLogger(__name__)
@@ -130,33 +130,53 @@ def instrument_cache_key(date: str, instrument: str) -> str:
 
 
 def build_instrument_report(date: str, instrument: str) -> dict:
+    from app.integrations.intraday import compute_best_entry_exit
+
     raw_trades, public_trades, instrument_meta = find_instrument_trades(date, instrument)
     stats = daily_stats(raw_trades)
     md = store.get_md(instrument_meta["asset"])
-    candles = md["candles"] if md else []
-    intraday_csv = fetch_intraday_csv(
+    daily_candles = md["candles"] if md else []
+
+    first_trade = public_trades[0]
+    last_trade  = public_trades[-1]
+    direction   = first_trade["direction"]
+
+    # Store-first: served from cache on repeat calls, fetched from Nubra on first call
+    intraday_candles = get_intraday_candles(
         symbol=instrument_meta["asset"],
         exchange=md["exchange"] if md else "NSE",
         inst_type=instrument_meta["asset_type"].rstrip("S"),
         date=date,
     )
+
+    # Compute best entry/exit deterministically from actual OHLCV — no AI guessing
+    best_ee = compute_best_entry_exit(
+        candles=intraday_candles,
+        direction=direction,
+        entry_time=first_trade["entry_time"],
+        exit_time=last_trade["exit_time"],
+    )
+
     ai_result = InstrumentAnalysisCrew(
         instrument=instrument_meta["instrument"],
         date=date,
         trades=raw_trades,
-        intraday_csv=intraday_csv,
+        intraday_csv=candles_to_csv(intraday_candles),
+        best_entry=best_ee["best_entry"],
+        best_exit=best_ee["best_exit"],
     ).run()
-    first_trade = public_trades[0]
-    last_trade = public_trades[-1]
+
     return {
         "date": date,
         "instrument": instrument_meta["instrument"],
         "asset": instrument_meta["asset"],
         "asset_type": instrument_meta["asset_type"],
         "derivative_type": instrument_meta["derivative_type"],
-        "direction": first_trade["direction"],
+        "direction": direction,
         "entry": {"time": first_trade["entry_time"], "price": first_trade["entry_price"]},
         "exit": {"time": last_trade["exit_time"], "price": last_trade["exit_price"]},
+        "best_entry": best_ee["best_entry"],
+        "best_exit": best_ee["best_exit"],
         "qty": sum(trade["qty"] for trade in public_trades),
         "pnl": stats["net_pnl"],
         "strategy": ai_result.get("strategy"),
@@ -170,7 +190,8 @@ def build_instrument_report(date: str, instrument: str) -> dict:
             "best_trade_pnl": stats["best_trade_pnl"],
             "max_drawdown": stats["max_drawdown"],
         },
-        "ohlcv_candles": candles,
+        "intraday_candles": intraday_candles,   # full 1m candles for verification
+        "ohlcv_candles": daily_candles,
         "signal_timeline": sorted(ai_result["signal_timeline"], key=lambda e: e.get("time") or ""),
         "analysis": ai_result["analysis"],
         "trades": public_trades,

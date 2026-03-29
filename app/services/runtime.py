@@ -111,3 +111,4 @@ def bootstrap_data() -> None:
     store.clear_daily_reports()
     store.clear_instrument_reports()
     store.clear_yearly_reports()
+    store.clear_intraday_candles()

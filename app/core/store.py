@@ -5,7 +5,8 @@ Sections
 --------
 orders_by_date        : { "2025-03-26": [ <order>, ... ] }
 md_data               : { "RELIANCE": { "exchange": "NSE", "type": "STOCK",
-                                        "candles": [ {timestamp, open, high, low, close, volume}, ... ] } }
+                                        "candles": [ {timestamp_ns, open, high, low, close, volume}, ... ] } }
+intraday_candles      : { "2025-03-26::RELIANCE": [ {time, open, high, low, close, volume}, ... ] }
 daily_reports_by_date : { "2025-03-26": <daily report dict> }
 instrument_reports    : { "2025-03-26::AXISBANK": <instrument detail dict> }
 yearly_reports_by_year: { 2025: <yearly pnl dict> }
@@ -16,8 +17,11 @@ from typing import Any
 # ── orders loaded from data/ files ──────────────────────────────────────────
 orders_by_date: dict[str, list[dict]] = {}
 
-# ── OHLCV candles fetched from Nubra, keyed by symbol ───────────────────────
+# ── daily OHLCV candles fetched from Nubra at startup, keyed by symbol ──────
 md_data: dict[str, dict[str, Any]] = {}
+
+# ── 1-minute intraday candles keyed by "date::symbol" ───────────────────────
+intraday_candles: dict[str, list[dict]] = {}
 
 # ── precomputed daily journal payloads keyed by date ────────────────────────
 daily_reports_by_date: dict[str, dict[str, Any]] = {}
@@ -68,6 +72,22 @@ def get_md(symbol: str) -> dict | None:
 
 def all_symbols() -> list[str]:
     return list(md_data.keys())
+
+
+# ---------------------------------------------------------------------------
+# intraday candles helpers  (1m OHLCV, keyed by "date::symbol")
+# ---------------------------------------------------------------------------
+
+def get_intraday_candles(date: str, symbol: str) -> list[dict] | None:
+    return intraday_candles.get(f"{date}::{symbol}")
+
+
+def set_intraday_candles(date: str, symbol: str, candles: list[dict]) -> None:
+    intraday_candles[f"{date}::{symbol}"] = candles
+
+
+def clear_intraday_candles() -> None:
+    intraday_candles.clear()
 
 
 # ---------------------------------------------------------------------------
