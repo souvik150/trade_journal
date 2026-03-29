@@ -50,7 +50,7 @@ def build_public_trade(trade: dict, trade_no: int, trade_date: str) -> dict:
 def build_daily_report(date: str, orders: list[dict]) -> dict:
     trades = pair_trades(orders)
     stats = daily_stats(trades)
-    public_trades = [build_public_trade(trade, i, date) for i, trade in enumerate(trades, start=1)]
+    public_trades = [build_public_trade(trade, (i - 1) * 2 + 1, date) for i, trade in enumerate(trades, start=1)]
     return {
         "date": date,
         "stats": {
@@ -171,7 +171,7 @@ def build_instrument_report(date: str, instrument: str) -> dict:
             "max_drawdown": stats["max_drawdown"],
         },
         "ohlcv_candles": candles,
-        "signal_timeline": ai_result["signal_timeline"],
+        "signal_timeline": sorted(ai_result["signal_timeline"], key=lambda e: e.get("time") or ""),
         "analysis": ai_result["analysis"],
         "trades": public_trades,
     }

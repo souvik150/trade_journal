@@ -3,3 +3,7 @@ __pycache__
 .claude/
 docs/assets/api_response_screenshots/
 auth_data.db
+node_modules/
+app/integrations/.wwebjs_auth/
+.wwebjs_auth
+.wwebjs_cache
